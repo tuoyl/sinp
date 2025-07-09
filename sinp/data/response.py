@@ -5,6 +5,7 @@ JAX-optimized response class
 import warnings
 import numpy as np
 import jax.numpy as jnp
+import matplotlib.axes.Axes
 from astropy.io import fits
 from typing import Dict, List, Tuple, Optional, Union, Any, NamedTuple
 
@@ -17,16 +18,16 @@ class Response:
     """
 
     def __init__(self,
-                 energy_low: Optional[np.ndarray] = None, 
+                 energy_low: Optional[np.ndarray] = None,
                  energy_high: Optional[np.ndarray] = None,
-                 rmf: Optional[np.ndarray] = None, 
+                 rmf: Optional[np.ndarray] = None,
                  arf: Optional[np.ndarray] = None,
-                 channel: Optional[np.ndarray] = None, 
-                 ebounds_min: Optional[np.ndarray] = None, 
+                 channel: Optional[np.ndarray] = None,
+                 ebounds_min: Optional[np.ndarray] = None,
                  ebounds_max: Optional[np.ndarray] = None):
         """
         Initialize Response object
-        
+
         Parameters
         ----------
         energy_low : array-like
@@ -51,7 +52,7 @@ class Response:
         self.channel = channel
         self.ebounds_min = ebounds_min
         self.ebounds_max = ebounds_max
-        
+
         # JAX arrays for efficient computation
         self._energy_low_jax = None
         self._energy_high_jax = None
@@ -60,7 +61,7 @@ class Response:
         self._drm_jax = None
         self._ebounds_min_jax = None
         self._ebounds_max_jax = None
-        
+
         # Update JAX arrays if data is provided
         if energy_low is not None:
             self._update_jax_arrays()
@@ -70,17 +71,17 @@ class Response:
         if self.energy_low is not None:
             self._energy_low_jax = jnp.array(self.energy_low)
             self._energy_high_jax = jnp.array(self.energy_high)
-        
+
         if self._rmf is not None:
             self._rmf_jax = jnp.array(self._rmf)
-        
+
         if self._arf is not None:
             self._arf_jax = jnp.array(self._arf)
-            
+
         if self.ebounds_min is not None:
             self._ebounds_min_jax = jnp.array(self.ebounds_min)
             self._ebounds_max_jax = jnp.array(self.ebounds_max)
-        
+
         # Update DRM if possible
         if self._rmf_jax is not None:
             self._update_drm()
@@ -108,7 +109,7 @@ class Response:
     def ebounds_centroid(self) -> np.ndarray:
         """Central energy of detected spectrum bins"""
         return (self.ebounds_min + self.ebounds_max) / 2
-    
+
     @property
     def ebounds_centroid_jax(self) -> jnp.ndarray:
         """JAX array of detected spectrum central energies"""
@@ -120,7 +121,7 @@ class Response:
     def ebounds_low(self) -> np.ndarray:
         """Lower energy boundaries (alias for ebounds_min)"""
         return self.ebounds_min
-    
+
     @property
     def ebounds_high(self) -> np.ndarray:
         """Upper energy boundaries (alias for ebounds_max)"""
@@ -179,7 +180,7 @@ class Response:
     def load_rmf_file(self, filename: str):
         """
         Load RMF (Redistribution Matrix File)
-        
+
         Parameters
         ----------
         filename : str
@@ -190,7 +191,7 @@ class Response:
             matrix_idx = self._find_extension(hdulist, 'MATRIX')
             self.energy_low = hdulist[matrix_idx].data.field("ENERG_LO")
             self.energy_high = hdulist[matrix_idx].data.field("ENERG_HI")
-            
+
             # Find EBOUNDS extension
             ebounds_idx = self._find_extension(hdulist, 'EBOUNDS')
             self.channel = hdulist[ebounds_idx].data.field("CHANNEL")
@@ -206,19 +207,19 @@ class Response:
                 # Fixed format
                 self._rmf = matrix_data
 
-            
+
         # Update JAX arrays
         self._update_jax_arrays()
 
     def _expand_variable_rmf(self, rmf_data) -> np.ndarray:
         """
         Expand variable-length RMF format to full matrix
-        
+
         Parameters
         ----------
         rmf_data : FITS data
             RMF data in variable-length format
-            
+
         Returns
         -------
         np.ndarray
@@ -226,20 +227,20 @@ class Response:
         """
         n_energy = len(rmf_data)
         n_channels = len(self.channel)
-        
+
         # Initialize full matrix
         rmf_full = np.zeros((n_energy, n_channels))
-        
+
         # Fill matrix
         for i, row in enumerate(rmf_data):
             n_grp = row['N_GRP']
             if n_grp == 0:
                 continue
-                
+
             f_chan = row['F_CHAN']
             n_chan = row['N_CHAN']
             matrix = row['MATRIX']
-            
+
             # Handle multiple groups
             if isinstance(f_chan, np.ndarray):
                 idx = 0
@@ -268,16 +269,16 @@ class Response:
         with fits.open(filename) as hdulist:
             specresp_idx = self._find_extension(hdulist, 'SPECRESP')
             self._arf = hdulist[specresp_idx].data.field('SPECRESP')
-            
+
             # Verify energy bins match RMF if loaded
             if self.energy_low is not None:
                 arf_elo = hdulist[specresp_idx].data.field('ENERG_LO')
                 arf_ehi = hdulist[specresp_idx].data.field('ENERG_HI')
-                
-                if not (np.allclose(arf_elo, self.energy_low) and 
+
+                if not (np.allclose(arf_elo, self.energy_low) and
                         np.allclose(arf_ehi, self.energy_high)):
                     warnings.warn("ARF energy bins don't match RMF energy bins")
-        
+
         # Update JAX arrays
         self._update_jax_arrays()
 
@@ -294,12 +295,12 @@ class Response:
     def fold_model(self, model_flux: Union[np.ndarray, jnp.ndarray]) -> jnp.ndarray:
         """
         Fold model through response matrix
-        
+
         Parameters
         ----------
         model_flux : array-like
             Model photon flux at incident energies
-            
+
         Returns
         -------
         jnp.ndarray
@@ -307,18 +308,18 @@ class Response:
         """
         if isinstance(model_flux, np.ndarray):
             model_flux = jnp.array(model_flux)
-        
+
         return model_flux @ self.drm_jax
 
     def effective_area(self, energy: Optional[Union[float, np.ndarray]] = None) -> Union[float, np.ndarray]:
         """
         Get effective area at given energy/energies
-        
+
         Parameters
         ----------
         energy : float or array-like, optional
             Energy/energies in keV. If None, returns ARF array
-            
+
         Returns
         -------
         float or array
@@ -326,10 +327,10 @@ class Response:
         """
         if self._arf is None:
             raise ValueError("No ARF loaded")
-            
+
         if energy is None:
             return self._arf
-        
+
         # Simple linear interpolation
         energy = np.atleast_1d(energy)
         return np.interp(energy, self.energy_centroid, self._arf)
@@ -337,14 +338,14 @@ class Response:
     def energy_resolution(self, energy: float, channel: Optional[int] = None) -> float:
         """
         Estimate energy resolution (FWHM) at given energy
-        
+
         Parameters
         ----------
         energy : float
             Energy in keV
         channel : int, optional
             Specific channel. If None, uses channel closest to energy
-            
+
         Returns
         -------
         float
@@ -353,13 +354,13 @@ class Response:
         if channel is None:
             # Find channel closest to energy
             channel = np.argmin(np.abs(self.ebounds_centroid - energy))
-        
+
         # Find energy bin containing this energy
         energy_bin = np.argmin(np.abs(self.energy_centroid - energy))
-        
+
         # Get response for this energy bin
         response = self._rmf[energy_bin, :]
-        
+
         # Calculate weighted standard deviation
         if np.sum(response) > 0:
             mean = np.sum(response * self.ebounds_centroid) / np.sum(response)
@@ -369,11 +370,11 @@ class Response:
         else:
             return 0.0
 
-    def plot_response(self, energy_bins: Optional[List[int]] = None, 
+    def plot_response(self, energy_bins: Optional[List[int]] = None,
                      ax: Optional['matplotlib.axes.Axes'] = None):
         """
         Plot response matrix
-        
+
         Parameters
         ----------
         energy_bins : list of int, optional
@@ -382,10 +383,10 @@ class Response:
             Axes to plot on
         """
         import matplotlib.pyplot as plt
-        
+
         if ax is None:
             fig, ax = plt.subplots(figsize=(10, 8))
-        
+
         if energy_bins is None:
             # Plot full matrix
             im = ax.imshow(self._rmf.T, aspect='auto', origin='lower',
@@ -405,7 +406,7 @@ class Response:
             ax.set_title('Energy Redistribution')
             ax.legend()
             ax.grid(True, alpha=0.3)
-        
+
         return ax
 
     def __repr__(self) -> str:
