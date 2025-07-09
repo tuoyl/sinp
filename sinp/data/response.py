@@ -5,7 +5,7 @@ JAX-optimized response class
 import warnings
 import numpy as np
 import jax.numpy as jnp
-import matplotlib.axes.Axes
+from matplotlib.axes import Axes
 from astropy.io import fits
 from typing import Dict, List, Tuple, Optional, Union, Any, NamedTuple
 
@@ -371,7 +371,7 @@ class Response:
             return 0.0
 
     def plot_response(self, energy_bins: Optional[List[int]] = None,
-                     ax: Optional['matplotlib.axes.Axes'] = None):
+                     ax: Optional['Axes'] = None):
         """
         Plot response matrix
 
